@@ -18,6 +18,8 @@ endif()
 add_executable(nightdrive
     src/main.cpp
     src/mathutil.h
+    src/nightdrive_hud.cpp
+    src/nightdrive_hud.h
 
     src/clustered_lighting.cpp
     src/clustered_lighting.h
