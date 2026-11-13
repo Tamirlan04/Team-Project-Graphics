@@ -11,6 +11,7 @@
 #include <unordered_map>
 #include <vector>
 #include "mathutil.h"
+#include "nightdrive_hud.h"
 
 static const char* TEAM_NAMES  = "Askaruly Temirlan, Tamerlan Murat";
 static const char* TOPIC_TITLE = "Topic 7 - Low-poly night drive, clustered/forward+ street lights";
@@ -256,6 +257,7 @@ static bool initGL() {
     gSphere = buildSphere(6, 10);
     gStars = buildStars(600);
     buildScene();
+    if (!initNightDriveHud()) return false;
     return true;
 }
 
@@ -366,6 +368,8 @@ static void display() {
     }
 
     glBindVertexArray(0);
+    drawNightDriveHud(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT),
+                      gFps, gCar.speed, gPaused, gStreetOn, gHeadOn);
     glutSwapBuffers();
 
     ++gFrames;
