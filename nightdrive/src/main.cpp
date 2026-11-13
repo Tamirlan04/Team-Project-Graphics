@@ -11,8 +11,10 @@
 #include <unordered_map>
 #include <vector>
 #include "mathutil.h"
+#include "car.h"
+#include "scene.h"
 
-static const char* TEAM_NAMES  = "Askaruly Temirlan, Tamerlan Murat";
+static const char* TEAM_NAMES  = "Askaruly Temirlan, Tamerlan Murat, Tamerlan Kyzylov";
 static const char* TOPIC_TITLE = "Topic 7 - Low-poly night drive, clustered/forward+ street lights";
 
 struct Mesh {
@@ -21,22 +23,13 @@ struct Mesh {
     GLenum mode = GL_TRIANGLES;
 };
 
-struct Building { vec3 pos, size, color; };
-
-struct Car {
-    vec3 pos;
-    float yaw = 0.f;    
-    float speed = 0.f;
-};
-
 static GLuint gProgram = 0;
 static std::unordered_map<std::string, GLint> gLocCache;
 
 static Mesh gCube, gSphere, gStars;
 
 static Car gCar;
-static std::vector<vec3> gStreetLights;   
-static std::vector<Building> gBuildings;
+static Scene gScene;
 
 static bool gUp = false, gDown = false, gLeft = false, gRight = false, gBrake = false;
 static bool gPaused = false;
@@ -53,9 +46,6 @@ static float gMoonAz = 0.4f, gMoonEl = 0.45f;
 static float gAspect = 16.f / 9.f;
 static int gLastTime = 0;
 static int gFrames = 0, gFpsTime = 0, gFps = 0;
-
-static const float ROAD_HALF_WIDTH = 5.f;
-static const float ROAD_LENGTH = 140.f;
 
 static std::string readTextFile(const char* name) {
     const char* dirs[] = { "shaders/", "../shaders/", "../../shaders/" };
@@ -210,36 +200,6 @@ static Mesh buildStars(int n) {
     return makeMesh(v, GL_POINTS);
 }
 
-static void resetCar() {
-    gCar.pos = vec3(2.5f, 0.f, -55.f);   
-    gCar.yaw = 0.f;
-    gCar.speed = 0.f;
-}
-
-static void buildScene() {
-    for (int side = -1; side <= 1; side += 2)
-        for (int i = 0; i < 8; ++i) {
-            float z = -52.5f + 15.f * (float)i;
-            gStreetLights.push_back(vec3((float)side * 5.2f, 5.8f, z));
-        }
-
-    unsigned seed = 12345u;
-    auto rnd = [&seed]() {
-        seed = seed * 1664525u + 1013904223u;
-        return (float)((seed >> 8) & 0xFFFFu) / 65535.f;
-    };
-    for (int side = -1; side <= 1; side += 2)
-        for (float z = -66.f; z <= 66.f; z += 12.f) {
-            float w = 7.f + rnd() * 3.f;
-            float h = 6.f + rnd() * 16.f;
-            float d = 8.f + rnd() * 2.f;
-            float x = (float)side * (15.f + w * 0.5f + rnd() * 2.f);
-            float c = 0.12f + rnd() * 0.08f;
-            gBuildings.push_back({ vec3(x, h * 0.5f, z), vec3(w, h, d), vec3(c, c + 0.01f, c + 0.04f) });
-        }
-    resetCar();
-}
-
 static bool initGL() {
     std::printf("GL_VERSION  : %s\n", glGetString(GL_VERSION));
     std::printf("GLSL_VERSION: %s\n", glGetString(GL_SHADING_LANGUAGE_VERSION));
@@ -255,7 +215,8 @@ static bool initGL() {
     gCube = buildCube();
     gSphere = buildSphere(6, 10);
     gStars = buildStars(600);
-    buildScene();
+    gScene.build();
+    resetCar(gCar);
     return true;
 }
 
@@ -277,9 +238,10 @@ static vec3 moonDirection() {
 static void updateTitle() {
     char t[400];
     std::snprintf(t, sizeof(t),
-        "%s | %s | FPS %d | Lighting: BRUTE-FORCE baseline, 16 street lights %s [T] | Headlights %s [F] | %s | Speed %.0f",
-        TEAM_NAMES, TOPIC_TITLE, gFps, gStreetOn ? "ON" : "OFF", gHeadOn ? "ON" : "OFF",
-        gPaused ? "PAUSED" : "running", gCar.speed);
+        "%s | %s | FPS %d | Lighting: BRUTE-FORCE baseline, %d street lights %s [T, 1/2/3] | Headlights %s [F] | %s | Speed %.0f | Distance %.0f/%.0f m | Time %.0f s%s",
+        TEAM_NAMES, TOPIC_TITLE, gFps, gScene.lightPreset, gStreetOn ? "ON" : "OFF", gHeadOn ? "ON" : "OFF",
+        gPaused ? "PAUSED" : "running", gCar.speed, gCar.distance, GOAL_DISTANCE, gCar.tripTime,
+        gCar.distance >= GOAL_DISTANCE ? " | GOAL REACHED! [R] restart" : "");
     glutSetWindowTitle(t);
 }
 
@@ -304,10 +266,8 @@ static void display() {
     setMat4("uView", view);
     setMat4("uProj", proj);
 
-    mat4 carM = translate(gCar.pos) * rotateY(gCar.yaw);
-    vec3 headPos[2] = { transformPoint(carM, vec3(-0.6f, 0.65f, 2.05f)),
-                        transformPoint(carM, vec3( 0.6f, 0.65f, 2.05f)) };
-    vec3 headDir = normalize(vec3(fwd.x, -0.06f, fwd.z));
+    vec3 headPos[2], headDir;
+    getHeadlights(gCar, headPos, headDir);
     vec3 moonDir = moonDirection();
 
     setVec3("uViewPos", eye);
@@ -316,11 +276,12 @@ static void display() {
     setVec3("uMoonColor", vec3(0.20f, 0.25f, 0.40f));
 
     std::vector<float> flat;
-    for (const vec3& p : gStreetLights) { flat.push_back(p.x); flat.push_back(p.y); flat.push_back(p.z); }
+    for (const StreetLight& L : gScene.lights) { flat.push_back(L.pos.x); flat.push_back(L.pos.y); flat.push_back(L.pos.z); }
+    int numStreet = std::min((int)gScene.lights.size(), 64);
     setInt("uStreetOn", gStreetOn ? 1 : 0);
-    setInt("uNumStreet", (int)gStreetLights.size());
-    glUniform3fv(loc("uStreetPos[0]"), (GLsizei)gStreetLights.size(), flat.data());
-    setVec3("uStreetColor", vec3(5.f, 3.9f, 2.25f));
+    setInt("uNumStreet", numStreet);
+    glUniform3fv(loc("uStreetPos[0]"), numStreet, flat.data());
+    setVec3("uStreetColor", vec3(5.f, 3.9f, 2.25f) * (16.f / (float)gScene.lightPreset));;
 
     float hp[6] = { headPos[0].x, headPos[0].y, headPos[0].z, headPos[1].x, headPos[1].y, headPos[1].z };
     setInt("uHeadOn", gHeadOn ? 1 : 0);
@@ -335,35 +296,11 @@ static void display() {
     drawPart(gSphere, translate(eye + moonDir * 350.f) * scale(vec3(40.f, 40.f, 40.f)), vec3(0.95f, 0.95f, 0.85f));
     setInt("uUnlit", 0);
 
-    drawPart(gCube, translate(vec3(0.f, -0.07f, 0.f)) * scale(vec3(400.f, 0.1f, 400.f)), vec3(0.12f, 0.18f, 0.10f), 0.02f, 4.f);
-    drawPart(gCube, translate(vec3(0.f, -0.02f, 0.f)) * scale(vec3(ROAD_HALF_WIDTH * 2.f, 0.06f, ROAD_LENGTH)), vec3(0.22f, 0.22f, 0.24f), 0.10f, 12.f);
-    for (float z = -66.f; z <= 66.f; z += 6.f)
-        drawPart(gCube, translate(vec3(0.f, 0.016f, z)) * scale(vec3(0.25f, 0.012f, 3.f)), vec3(0.85f, 0.85f, 0.7f), 0.05f, 8.f);
-
-    for (const vec3& L : gStreetLights) {
-        float side = (L.x > 0.f) ? 1.f : -1.f;
-        drawPart(gCube, translate(vec3(side * 6.5f, 3.f, L.z)) * scale(vec3(0.25f, 6.f, 0.25f)), vec3(0.15f, 0.15f, 0.17f), 0.2f, 16.f);
-        drawPart(gCube, translate(vec3(side * 5.85f, 5.9f, L.z)) * scale(vec3(1.3f, 0.15f, 0.15f)), vec3(0.15f, 0.15f, 0.17f), 0.2f, 16.f);
-        drawPart(gCube, translate(vec3(L.x, 5.95f, L.z)) * scale(vec3(0.5f, 0.2f, 0.5f)), vec3(0.3f, 0.3f, 0.25f), 0.f, 1.f,
-                 gStreetOn ? vec3(1.f, 0.8f, 0.45f) : vec3(0.05f, 0.05f, 0.04f));
-    }
-
-    for (const Building& b : gBuildings)
-        drawPart(gCube, translate(b.pos) * scale(b.size), b.color, 0.05f, 8.f);
-
-    auto part = [&](vec3 off, vec3 size, vec3 col, float sp, float sh, vec3 em) {
-        drawPart(gCube, carM * translate(off) * scale(size), col, sp, sh, em);
+    DrawBoxFn box = [](const mat4& m, const vec3& color, float spec, float shin, const vec3& emissive) {
+        drawPart(gCube, m, color, spec, shin, emissive);
     };
-    part(vec3(0.f, 0.6f, 0.f),   vec3(1.8f, 0.6f, 4.0f), vec3(0.65f, 0.08f, 0.08f), 0.6f, 48.f, vec3());
-    part(vec3(0.f, 1.15f, -0.3f), vec3(1.5f, 0.5f, 2.1f), vec3(0.45f, 0.06f, 0.06f), 0.6f, 48.f, vec3());
-    for (int sx = -1; sx <= 1; sx += 2)
-        for (int sz = -1; sz <= 1; sz += 2)
-            part(vec3((float)sx * 0.95f, 0.3f, (float)sz * 1.3f), vec3(0.3f, 0.6f, 0.6f), vec3(0.04f, 0.04f, 0.04f), 0.1f, 8.f, vec3());
-    for (int sx = -1; sx <= 1; sx += 2) {
-        part(vec3((float)sx * 0.6f, 0.65f, 2.0f),  vec3(0.35f, 0.2f, 0.08f), vec3(1.f, 1.f, 0.8f), 0.f, 1.f,
-             gHeadOn ? vec3(1.f, 0.95f, 0.7f) : vec3(0.08f, 0.08f, 0.06f));
-        part(vec3((float)sx * 0.6f, 0.65f, -2.0f), vec3(0.35f, 0.2f, 0.08f), vec3(0.5f, 0.f, 0.f), 0.f, 1.f, vec3(0.6f, 0.02f, 0.02f));
-    }
+    gScene.draw(box, gCar.pos.z, gStreetOn);
+    drawCar(gCar, gHeadOn, box);
 
     glBindVertexArray(0);
     glutSwapBuffers();
@@ -380,34 +317,15 @@ static void display() {
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-static void applyDrag(float amount) {
-    if (gCar.speed > 0.f) gCar.speed = std::max(0.f, gCar.speed - amount);
-    else                  gCar.speed = std::min(0.f, gCar.speed + amount);
-}
-
-static void updateCar(float dt) {
-    float accel = 0.f;
-    if (gUp)   accel += 14.f;
-    if (gDown) accel -= 18.f;
-    gCar.speed += accel * dt;
-    if (!gUp && !gDown) applyDrag(5.f * dt);
-    if (gBrake) applyDrag(25.f * dt);
-    gCar.speed = clampf(gCar.speed, -8.f, 28.f);
-
-    float steer = (gLeft ? 1.f : 0.f) - (gRight ? 1.f : 0.f);
-    float k = clampf(gCar.speed / 6.f, -1.f, 1.f);        
-    gCar.yaw += steer * 1.7f * k * dt;
-
-    vec3 fwd(std::sin(gCar.yaw), 0.f, std::cos(gCar.yaw));
-    gCar.pos = gCar.pos + fwd * (gCar.speed * dt);
-}
-
 static void idle() {            
     int now = glutGet(GLUT_ELAPSED_TIME);
     float dt = (float)(now - gLastTime) * 0.001f;
     gLastTime = now;
     if (dt > 0.05f) dt = 0.05f;
-    updateCar(dt);
+    CarInput in;
+    in.up = gUp; in.down = gDown; in.left = gLeft; in.right = gRight; in.brake = gBrake;
+    updateCar(gCar, in, dt);
+    gScene.update(gCar.pos.z);
     glutPostRedisplay();
 }
 
@@ -435,7 +353,10 @@ static void keyDown(unsigned char key, int, int) {
         case 27:  std::exit(0);
         case ' ': gBrake = true; break;
         case 'p': togglePause(); break;
-        case 'r': resetCar(); break;
+        case 'r': resetCar(gCar); gScene.update(gCar.pos.z); break;
+        case '1': gScene.setLightPreset(16); gScene.update(gCar.pos.z); break;
+        case '2': gScene.setLightPreset(32); gScene.update(gCar.pos.z); break;
+        case '3': gScene.setLightPreset(64); gScene.update(gCar.pos.z); break;
         case 'c':
             gChaseCam = !gChaseCam;
             if (!gChaseCam) gOrbitYaw = gCar.yaw + 3.14159f;   

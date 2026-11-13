@@ -3,7 +3,7 @@ in vec3 vWorldPos;
 in vec3 vNormal;
 out vec4 FragColor;
 
-const int MAX_STREET = 16;
+const int MAX_STREET = 64;
 
 uniform vec3  uColor;      
 uniform vec3  uEmissive;   

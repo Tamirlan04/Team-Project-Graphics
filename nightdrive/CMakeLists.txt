@@ -15,20 +15,18 @@ else()
   set(GLUT_TARGET FreeGLUT::freeglut)
 endif()
 
-add_executable(nightdrive
-    src/main.cpp
-    src/mathutil.h
-
-    src/clustered_lighting.cpp
-    src/clustered_lighting.h
-
-    src/cluster_gpu_packing.cpp
-    src/cluster_gpu_packing.h
-
-    src/cluster_gpu_buffers.cpp
-    src/cluster_gpu_buffers.h
+add_executable(
+   nightdrive 
+   src/main.cpp 
+   src/car.cpp 
+   src/scene.cpp 
+   src/car.h 
+   src/scene.h 
+   src/common.h 
+   src/mathutil.h
 )
-target_link_libraries(nightdrive PRIVATE OpenGL::GL GLEW::GLEW ${GLUT_TARGET})
+   
+   target_link_libraries(nightdrive PRIVATE OpenGL::GL GLEW::GLEW ${GLUT_TARGET})
 
 add_custom_command(TARGET nightdrive POST_BUILD
   COMMAND ${CMAKE_COMMAND} -E copy_directory
