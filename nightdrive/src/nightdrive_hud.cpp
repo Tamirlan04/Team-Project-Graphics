@@ -168,7 +168,8 @@ void main() { FragColor = vColor; }
 }
 
 void drawNightDriveHud(int width, int height, int fps, float speed,
-                       bool paused, bool streetLightsOn, bool headlightsOn) {
+                       bool paused, bool streetLightsOn, bool headlightsOn,
+                       bool showHelp, const char* lightingMode) {
     if (!hudProgram || width <= 0 || height <= 0) return;
     const float zoom = std::min(1.f, std::min((width - 24.f) / 630.f, (height - 20.f) / 210.f));
     if (zoom <= 0.f) return;
@@ -196,7 +197,41 @@ void drawNightDriveHud(int width, int height, int fps, float speed,
     std::string status = paused ? "PAUSED" : "RUNNING";
     status += streetLightsOn ? "  STREET: ON" : "  STREET: OFF";
     status += headlightsOn ? "  HEAD: ON" : "  HEAD: OFF";
-    drawText(status, X(18), Y(162), 1.8f * zoom, paused ? amber : green);
+    drawText(std::string("LIGHTING: ") + (lightingMode ? lightingMode : "UNKNOWN"),
+             X(18), Y(143), 1.8f * zoom, amber);
+    drawText("H / F1: HELP", X(412), Y(143), 1.8f * zoom, muted);
+    drawText(status, X(18), Y(168), 1.8f * zoom, paused ? amber : green);
+
+    if (showHelp) {
+        const bool rightSide = width >= 1020;
+        const float availableHeight = rightSide
+            ? (height - 28.f)
+            : (height - 204.f * zoom - 28.f);
+        const float hz = std::min(zoom, std::min((width - 28.f) / 380.f, availableHeight / 258.f));
+        if (hz > 0.12f) {
+            const float hx = rightSide ? width - 14.f - 380.f * hz : 14.f;
+            const float hy = rightSide ? 14.f : 14.f + 204.f * zoom;
+            const auto HX = [&](float x) { return hx + x * hz; };
+            const auto HY = [&](float y) { return hy + y * hz; };
+            rectangle(HX(0), HY(0), 380.f * hz, 258.f * hz, background);
+            rectangle(HX(0), HY(0), 5.f * hz, 258.f * hz, amber);
+            drawText("CONTROLS  H / F1 TO CLOSE", HX(18), HY(18), 2.f * hz, white);
+            rectangle(HX(18), HY(42), 344.f * hz, 1.f * hz, muted);
+            const char* help[] = {
+                "ARROWS : DRIVE / STEER",
+                "SPACE  : BRAKE",
+                "P      : PAUSE / RESUME",
+                "R      : RESET CAR",
+                "C      : CHANGE CAMERA",
+                "T      : STREET LIGHTS",
+                "F      : HEADLIGHTS",
+                "MOUSE  : ORBIT / ZOOM",
+                "ESC    : EXIT"
+            };
+            for (int i = 0; i < 9; ++i)
+                drawText(help[i], HX(18), HY(55.f + i * 20.f), 2.f * hz, muted);
+        }
+    }
 
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_CULL_FACE);
