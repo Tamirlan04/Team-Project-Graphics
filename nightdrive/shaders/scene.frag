@@ -1,84 +1,102 @@
-#version 330 core
+﻿#version 330 core
+
 in vec3 vWorldPos;
+in vec3 vViewPos;
 in vec3 vNormal;
+
 out vec4 FragColor;
 
-const int MAX_STREET = 16;
+struct PointLight {
+    vec3 position;
+    vec3 color;
+    float intensity;
+    float radius;
+};
 
-uniform vec3  uColor;      
-uniform vec3  uEmissive;   
-uniform float uSpec;       
-uniform float uShin;       
-uniform int   uUnlit;      
+#define MAX_LIGHTS 64
+uniform int uNumLights;
+uniform PointLight uLights[MAX_LIGHTS];
+uniform vec3 uCameraPos;
+uniform vec2 uScreenSize;
+uniform float uZNear;
+uniform float uZFar;
+uniform ivec3 uGridDims; // 16 x 9 x 8
 
-uniform vec3  uViewPos;
-uniform vec3  uAmbient;
+uniform isamplerBuffer uClusterRangesTBO; // RG32I: offset, count
+uniform isamplerBuffer uLightIndicesTBO;  // R32I:  lightIndex
 
-uniform vec3  uMoonDir;    
-uniform vec3  uMoonColor;
+int computeClusterIndex(vec2 fragCoord, float viewZ) {
+    int cx = clamp(int(fragCoord.x / (uScreenSize.x / float(uGridDims.x))), 0, uGridDims.x - 1);
+    int cy = clamp(int(fragCoord.y / (uScreenSize.y / float(uGridDims.y))), 0, uGridDims.y - 1);
+    float zClamped = clamp(-viewZ, uZNear, uZFar);
+    float sliceF = log(zClamped / uZNear) / log(uZFar / uZNear) * float(uGridDims.z);
+    int cz = clamp(int(sliceF), 0, uGridDims.z - 1);
+    return cx + cy * uGridDims.x + cz * (uGridDims.x * uGridDims.y);
+}
 
-uniform int   uStreetOn;
-uniform int   uNumStreet;
-uniform vec3  uStreetPos[MAX_STREET];
-uniform vec3  uStreetColor;
-
-uniform int   uHeadOn;
-uniform vec3  uHeadPos[2];
-uniform vec3  uHeadDir;    
-uniform vec3  uHeadColor;
-uniform float uHeadCosCut; 
+vec3 evalBlinnPhong(PointLight light, vec3 N, vec3 worldPos, vec3 V) {
+    vec3 Lvec = light.position - worldPos;
+    float dist = length(Lvec);
+    if (dist >= light.radius) return vec3(0.0)
 
 
-vec3 shade(vec3 N, vec3 V, vec3 L, vec3 lightColor, float atten)
-{
-    float ndl = max(dot(N, L), 0.0);
+
+
+
+
+
+
+
+
+;
+
+    vec3 L = Lvec / max(dist, 0.0001);
+    float atten = clamp(1.0 - (dist / light.radius), 0.0, 1.0);
+    atten *= atten;
+
+    float diff = max(dot(N, L), 0.0);
     vec3 H = normalize(L + V);
-    float spec = (ndl > 0.0) ? pow(max(dot(N, H), 0.0), uShin) * uSpec : 0.0;
-    return lightColor * atten * (uColor * ndl + vec3(spec));
+    float spec = pow(max(dot(N, H), 0.0), 32.0);
+    return (diff + 0.4 * spec) * light.color * light.intensity * atten;
 }
 
-
-float pointAtten(float d, float range)
-{
-    float a = 1.0 / (1.0 + 0.09 * d + 0.032 * d * d);
-    float w = clamp(1.0 - pow(d / range, 4.0), 0.0, 1.0);
-    return a * w * w;
-}
-
-void main()
-{
-    if (uUnlit == 1) {
-        FragColor = vec4(uColor, 1.0);
-        return;
-    }
-
+void main() {
     vec3 N = normalize(vNormal);
-    vec3 V = normalize(uViewPos - vWorldPos);
+ 
 
-    vec3 color = uAmbient * uColor + uEmissive;
-    color += shade(N, V, normalize(uMoonDir), uMoonColor, 1.0);
 
-    if (uStreetOn == 1) {
-        for (int i = 0; i < MAX_STREET; ++i) {
-            if (i >= uNumStreet) break;
-            vec3 toLight = uStreetPos[i] - vWorldPos;
-            float d = length(toLight);
-            color += shade(N, V, toLight / d, uStreetColor, pointAtten(d, 30.0));
+
+
+
+
+
+
+
+
+
+
+
+   vec3 V = normalize(uCameraPos - vWorldPos);
+    vec3 color = vec3(0.04, 0.05, 0.08);
+
+    int clusterIdx = computeClusterIndex(gl_FragCoord.xy, vViewPos.z);
+    ivec2 range = texelFetch(uClusterRangesTBO, clusterIdx).xy;
+
+    for (int i = 0; i < range.y; ++i) {
+        int lightId = texelFetch(uLightIndicesTBO, range.x + i).x;
+        if (lightId >= 0 && lightId < uNumLights) {
+ 
+
+
+
+
+
+
+
+
+           color += evalBlinnPhong(uLights[lightId], N, vWorldPos, V);
         }
     }
 
-    if (uHeadOn == 1) {
-        for (int i = 0; i < 2; ++i) {
-            vec3 toLight = uHeadPos[i] - vWorldPos;
-            float d = length(toLight);
-            vec3 L = toLight / d;
-            float cosA = dot(-L, uHeadDir);
-            if (cosA > uHeadCosCut) {
-                float cone = pow(cosA, 12.0);
-                color += shade(N, V, L, uHeadColor, pointAtten(d, 45.0) * cone);
-            }
-        }
-    }
-
-    FragColor = vec4(clamp(color, 0.0, 1.0), 1.0);
+    FragColor = vec4(color, 1.0);
 }
