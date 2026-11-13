@@ -1,4 +1,4 @@
-#version 330 core
+﻿#version 330 core
 layout(location = 0) in vec3 aPos;
 layout(location = 1) in vec3 aNormal;
 
@@ -7,13 +7,14 @@ uniform mat4 uView;
 uniform mat4 uProj;
 
 out vec3 vWorldPos;
+out vec3 vViewPos;
 out vec3 vNormal;
 
-void main()
-{
-    vec4 world = uModel * vec4(aPos, 1.0);
-    vWorldPos = world.xyz;
-    vNormal = normalize(transpose(inverse(mat3(uModel))) * aNormal);
-    gl_Position = uProj * uView * world;
-    gl_PointSize = 2.0;   
+void main() {
+    vec4 worldPos = uModel * vec4(aPos, 1.0);
+    vec4 viewPos  = uView * worldPos;
+    vWorldPos = worldPos.xyz;
+    vViewPos  = viewPos.xyz;
+    vNormal   = mat3(transpose(inverse(uModel))) * aNormal;
+    gl_Position = uProj * viewPos;
 }
