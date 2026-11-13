@@ -37,7 +37,7 @@ int computeClusterIndex(vec2 fragCoord, float viewZ) {
 vec3 evalBlinnPhong(PointLight light, vec3 N, vec3 worldPos, vec3 V) {
     vec3 Lvec = light.position - worldPos;
     float dist = length(Lvec);
-    if (dist >= light.radius) return vec3(0.0)
+    if (dist >= light.radius) return vec3(0.0);
 
 
 
@@ -48,7 +48,8 @@ vec3 evalBlinnPhong(PointLight light, vec3 N, vec3 worldPos, vec3 V) {
 
 
 
-;
+
+
 
     vec3 L = Lvec / max(dist, 0.0001);
     float atten = clamp(1.0 - (dist / light.radius), 0.0, 1.0);
@@ -75,7 +76,6 @@ void main() {
 
 
 
-
    vec3 V = normalize(uCameraPos - vWorldPos);
     vec3 color = vec3(0.04, 0.05, 0.08);
 
@@ -85,7 +85,7 @@ void main() {
     for (int i = 0; i < range.y; ++i) {
         int lightId = texelFetch(uLightIndicesTBO, range.x + i).x;
         if (lightId >= 0 && lightId < uNumLights) {
- 
+            color += evalBlinnPhong(uLights[l
 
 
 
@@ -94,7 +94,7 @@ void main() {
 
 
 
-           color += evalBlinnPhong(uLights[lightId], N, vWorldPos, V);
+ightId], N, vWorldPos, V);
         }
     }
 
