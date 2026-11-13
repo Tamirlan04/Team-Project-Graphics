@@ -41,6 +41,7 @@ static std::vector<Building> gBuildings;
 
 static bool gUp = false, gDown = false, gLeft = false, gRight = false, gBrake = false;
 static bool gPaused = false;
+static bool gShowHelp = false;
 static bool gStreetOn = true;
 static bool gHeadOn = true;
 static bool gChaseCam = true;
@@ -369,7 +370,8 @@ static void display() {
 
     glBindVertexArray(0);
     drawNightDriveHud(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT),
-                      gFps, gCar.speed, gPaused, gStreetOn, gHeadOn);
+                      gFps, gCar.speed, gPaused, gStreetOn, gHeadOn,
+                      gShowHelp, "BRUTE-FORCE");
     glutSwapBuffers();
 
     ++gFrames;
@@ -439,6 +441,7 @@ static void keyDown(unsigned char key, int, int) {
         case 27:  std::exit(0);
         case ' ': gBrake = true; break;
         case 'p': togglePause(); break;
+        case 'h': gShowHelp = !gShowHelp; break;
         case 'r': resetCar(); break;
         case 'c':
             gChaseCam = !gChaseCam;
@@ -463,6 +466,7 @@ static void keyUp(unsigned char key, int, int) {
 
 static void specialDown(int key, int, int) {
     switch (key) {
+        case GLUT_KEY_F1: gShowHelp = !gShowHelp; glutPostRedisplay(); break;
         case GLUT_KEY_UP:    gUp = true; break;
         case GLUT_KEY_DOWN:  gDown = true; break;
         case GLUT_KEY_LEFT:  gLeft = true; break;
