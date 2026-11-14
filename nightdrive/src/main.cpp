@@ -13,6 +13,7 @@
 #include "mathutil.h"
 #include "car.h"
 #include "scene.h"
+#include "nightdrive_hud.h"
 
 static const char* TEAM_NAMES  = "Askaruly Temirlan, Tamerlan Murat, Tamerlan Kyzylov";
 static const char* TOPIC_TITLE = "Topic 7 - Low-poly night drive, clustered/forward+ street lights";
@@ -33,6 +34,7 @@ static Scene gScene;
 
 static bool gUp = false, gDown = false, gLeft = false, gRight = false, gBrake = false;
 static bool gPaused = false;
+static bool gShowHelp = false;
 static bool gStreetOn = true;
 static bool gHeadOn = true;
 static bool gChaseCam = true;
@@ -217,6 +219,8 @@ static bool initGL() {
     gStars = buildStars(600);
     gScene.build();
     resetCar(gCar);
+    buildScene();
+    if (!initNightDriveHud()) return false;
     return true;
 }
 
@@ -303,6 +307,9 @@ static void display() {
     drawCar(gCar, gHeadOn, box);
 
     glBindVertexArray(0);
+    drawNightDriveHud(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT),
+                      gFps, gCar.speed, gPaused, gStreetOn, gHeadOn,
+                      gShowHelp, "BRUTE-FORCE");
     glutSwapBuffers();
 
     ++gFrames;
@@ -357,6 +364,8 @@ static void keyDown(unsigned char key, int, int) {
         case '1': gScene.setLightPreset(16); gScene.update(gCar.pos.z); break;
         case '2': gScene.setLightPreset(32); gScene.update(gCar.pos.z); break;
         case '3': gScene.setLightPreset(64); gScene.update(gCar.pos.z); break;
+        case 'h': gShowHelp = !gShowHelp; break;
+        case 'r': resetCar(); break;
         case 'c':
             gChaseCam = !gChaseCam;
             if (!gChaseCam) gOrbitYaw = gCar.yaw + 3.14159f;   
@@ -380,6 +389,7 @@ static void keyUp(unsigned char key, int, int) {
 
 static void specialDown(int key, int, int) {
     switch (key) {
+        case GLUT_KEY_F1: gShowHelp = !gShowHelp; glutPostRedisplay(); break;
         case GLUT_KEY_UP:    gUp = true; break;
         case GLUT_KEY_DOWN:  gDown = true; break;
         case GLUT_KEY_LEFT:  gLeft = true; break;

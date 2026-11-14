@@ -24,6 +24,17 @@ add_executable(
    src/scene.h 
    src/common.h 
    src/mathutil.h
+   src/nightdrive_hud.cpp
+   src/nightdrive_hud.h
+
+   src/clustered_lighting.cpp
+   src/clustered_lighting.h
+
+   src/cluster_gpu_packing.cpp
+   src/cluster_gpu_packing.h
+
+   src/cluster_gpu_buffers.cpp
+   src/cluster_gpu_buffers.h
 )
    
    target_link_libraries(nightdrive PRIVATE OpenGL::GL GLEW::GLEW ${GLUT_TARGET})
