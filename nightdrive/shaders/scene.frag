@@ -6,6 +6,7 @@ in vec3 vNormal;
 
 out vec4 FragColor;
 
+const int MAX_STREET = 64;
 struct PointLight {
     vec3 position;
     vec3 color;
