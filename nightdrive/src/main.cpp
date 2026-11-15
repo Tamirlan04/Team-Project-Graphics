@@ -219,7 +219,6 @@ static bool initGL() {
     gStars = buildStars(600);
     gScene.build();
     resetCar(gCar);
-    buildScene();
     if (!initNightDriveHud()) return false;
     return true;
 }
@@ -267,6 +266,12 @@ static void display() {
     mat4 proj = perspective(radians(60.f), gAspect, 0.1f, 1000.f);
 
     glUseProgram(gProgram);
+    // Keep the working brute-force renderer until Forward+ GPU upload is integrated.
+    setInt("uUseClustered", 0);
+    // Avoid assigning sampler uniforms with different types to the same texture unit.
+    setInt("uClusterRanges", 3);
+    setInt("uClusterIndices", 4);
+    setInt("uClusterLights", 5);
     setMat4("uView", view);
     setMat4("uProj", proj);
 
@@ -365,7 +370,6 @@ static void keyDown(unsigned char key, int, int) {
         case '2': gScene.setLightPreset(32); gScene.update(gCar.pos.z); break;
         case '3': gScene.setLightPreset(64); gScene.update(gCar.pos.z); break;
         case 'h': gShowHelp = !gShowHelp; break;
-        case 'r': resetCar(); break;
         case 'c':
             gChaseCam = !gChaseCam;
             if (!gChaseCam) gOrbitYaw = gCar.yaw + 3.14159f;   

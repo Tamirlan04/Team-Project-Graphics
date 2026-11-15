@@ -1,4 +1,8 @@
-﻿#version 330 core
+#version 330 core
+
+// Night Drive - unified Forward+ & Brute-Force lighting shader.
+// uUseClustered / uLightingMode = 0: CPU-fed brute-force lighting
+// uUseClustered / uLightingMode = 1: Clustered Forward+ path via GPU TBOs
 
 in vec3 vWorldPos;
 in vec3 vViewPos;
@@ -16,53 +20,47 @@ struct PointLight {
 
 #define MAX_LIGHTS 64
 uniform int uNumLights;
-uniform int uLightingMode; // 0 = Brute-Force, 1 = Clustered Forward+ (Key G)
+uniform int uUseClustered;
+uniform int uLightingMode;
 uniform PointLight uLights[MAX_LIGHTS];
 uniform vec3 uCameraPos;
 uniform vec2 uScreenSize;
 uniform float uZNear;
 uniform float uZFar;
-uniform ivec3 uGridDims;
+uniform ivec3 uGridDims; // 16 x 9 x 8
 
+uniform isamplerBuffer uClusterRanges;
+uniform isamplerBuffer uClusterIndices;
 uniform isamplerBuffer uClusterRangesTBO;
 uniform isamplerBuffer uLightIndicesTBO;
 
 int computeClusterIndex(vec2 fragCoord, float viewZ) {
-    int cx = clamp(int(fragCoord.x / (uScreenSize.x / float(uGridDims.x))), 0, uGridDims.x - 1);
-    int cy = clamp(int(fragCoord.y / (uScreenSize.y / float(uGridDims.y))), 0, uGridDims.y - 1);
-    float zClamped = clamp
+    int gx = max(uGridDims.x, 16);
+    int gy = max(uGridDims.y, 9);
+    int gz = max(uGridDims.z, 8);
+    vec2 screen = max(uScreenSize, vec2(1280.0, 720.0));
+    float zNear = max(uZNear, 0.1);
+    float zFar  = max(uZFar, 1000.0);
 
-
-(-viewZ, uZNear, uZFar);
-    float sliceF = log(zClamped / uZNear) / log(uZFar / uZNear) * float(uGridDims.z);
-    int cz = clamp(int(sliceF), 0, uGridDims.z - 1);
-    return cx + cy * uGridDims.x + cz * (uGridDims.x * uGridDims.y);
+    int cx = clamp(int(fragCoord.x / (screen.x / float(gx))), 0, gx - 1);
+    int cy = clamp(int(fragCoord.y / (screen.y / float(gy))), 0, gy - 1);
+    float zClamped = clamp(-viewZ, zNear, zFar);
+    float sliceF = log(zClamped / zNear) / log(zFar / zNear) * float(gz);
+    int cz = clamp(int(sliceF), 0, gz - 1);
+    return cx + cy * gx + cz * (gx * gy);
 }
 
 vec3 evalBlinnPhong(PointLight light, vec3 N, vec3 worldPos, vec3 V) {
     vec3 Lvec = light.position - worldPos;
-    float
-
-
-
-
-
-
-
- dist = length(Lvec);
+    float dist = length(Lvec);
     if (dist >= light.radius) return vec3(0.0);
+
     vec3 L = Lvec / max(dist, 0.0001);
     float atten = clamp(1.0 - (dist / light.radius), 0.0, 1.0);
     atten *= atten;
+
     float diff = max(dot(N, L), 0.0);
     vec3 H = normalize(L + V);
-
-
-
-
-
-
-
     float spec = pow(max(dot(N, H), 0.0), 32.0);
     return (diff + 0.4 * spec) * light.color * light.intensity * atten;
 }
@@ -72,42 +70,4 @@ void main() {
     vec3 V = normalize(uCameraPos - vWorldPos);
     vec3 color = vec3(0.04, 0.05, 0.08);
 
-
-
-
-
-
-
-
-
-    if (uLightingMode == 0) {
-        for (int i = 0; i < uNumLights; ++i) {
-            color += evalBlinnPhong(uLights[i], N, vWorldPos, V);
-        }
-    } else {
-
-
-
-
-
-
-        int clusterIdx = computeClusterIndex(gl_FragCoord.xy, vViewPos.z);
-        ivec2 range = texelFetch(uClusterRangesTBO, clusterIdx).xy;
-        for (int i = 0; i < range.y; ++i) {
-  
-
-
-          int lightId = texelFetch(uLightIndicesTBO, range.x + i).x;
-            if (lightId >= 0 && lightId < uNumLights) {
-                color += evalBlinnPhong(uLights[lightId], N, vWorldPos, V);
-
-
-
-            }
-        }
-    }
-    FragCo
-
-
-lor = vec4(color, 1.0);
-}
+    bool useClustered = (uUseCluster
