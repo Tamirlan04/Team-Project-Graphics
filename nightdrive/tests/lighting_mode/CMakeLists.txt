@@ -1,0 +1,8 @@
+﻿cmake_minimum_required(VERSION 3.16)
+project(NightDriveLightingModeTest LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+enable_testing()
+add_executable(lighting_mode_tests lighting_mode_tests.cpp ../../src/lighting_mode_toggle.cpp)
+target_include_directories(lighting_mode_tests PRIVATE ../../src)
+add_test(NAME LightingModeToggleTest COMMAND lighting_mode_tests)
