@@ -1,10 +1,10 @@
 #include "scene.h"
 #include <cmath>
 
-static const float LIGHT_WINDOW    = 120.f;   
-static const float LIGHT_RADIUS    = 30.f;
-static const float BUILDING_WINDOW = 240.f;   
-static const float ROAD_LENGTH     = 400.f;
+static const float LIGHT_WINDOW = 120.f;
+static const float LIGHT_RADIUS = 30.f;
+static const float BUILDING_WINDOW = 240.f;
+static const float ROAD_LENGTH = 900.f;
 
 
 static float wrapAround(float baseZ, float centerZ, float window) {
@@ -20,7 +20,7 @@ void Scene::build() {
     auto rnd = [&seed]() {
         seed = seed * 1664525u + 1013904223u;
         return (float)((seed >> 8) & 0xFFFFu) / 65535.f;
-    };
+        };
     for (int side = -1; side <= 1; side += 2)
         for (int k = 0; k < 20; ++k) {
             float z = -66.f + 12.f * (float)k;
@@ -38,7 +38,7 @@ void Scene::setLightPreset(int total) {
     if (total != 16 && total != 32 && total != 64) total = 16;
     lightPreset = total;
     int perSide = total / 2;
-    float spacing = LIGHT_WINDOW / (float)perSide;      
+    float spacing = LIGHT_WINDOW / (float)perSide;
     lightBase_.clear();
     for (int side = -1; side <= 1; side += 2)
         for (int i = 0; i < perSide; ++i)
@@ -49,19 +49,29 @@ void Scene::setLightPreset(int total) {
 
 void Scene::update(float carZ) {
     for (size_t i = 0; i < lightBase_.size(); ++i) {
-        lights[i].pos    = vec3(lightBase_[i].x, lightBase_[i].y, wrapAround(lightBase_[i].z, carZ, LIGHT_WINDOW));
+        lights[i].pos = vec3(lightBase_[i].x, lightBase_[i].y, wrapAround(lightBase_[i].z, carZ, LIGHT_WINDOW));
         lights[i].radius = LIGHT_RADIUS;
     }
 }
 
 void Scene::draw(const DrawBoxFn& box, float carZ, bool streetOn) const {
-    
-    box(translate(vec3(0.f, -0.07f, carZ)) * scale(vec3(400.f, 0.1f, 400.f)), vec3(0.12f, 0.18f, 0.10f), 0.02f, 4.f, vec3());
+
+    box(translate(vec3(0.f, -0.07f, carZ)) * scale(vec3(900.f, 0.1f, 900.f)), vec3(0.12f, 0.18f, 0.10f), 0.02f, 4.f, vec3());
     box(translate(vec3(0.f, -0.02f, carZ)) * scale(vec3(ROAD_HALF_WIDTH * 2.f, 0.06f, ROAD_LENGTH)),
         vec3(0.22f, 0.22f, 0.24f), 0.10f, 12.f, vec3());
+    for (int side = -1; side <= 1; side += 2) {
 
-    float snap = std::floor(carZ / 6.f) * 6.f;           
-    for (int k = -12; k <= 12; ++k)
+        box(translate(vec3((float)side * 6.5f, 0.05f, carZ)) * scale(vec3(3.f, 0.16f, ROAD_LENGTH)),
+            vec3(0.30f, 0.30f, 0.32f), 0.05f, 8.f, vec3());
+        box(translate(vec3((float)side * 5.1f, 0.06f, carZ)) * scale(vec3(0.2f, 0.18f, ROAD_LENGTH)),
+            vec3(0.42f, 0.42f, 0.44f), 0.05f, 8.f, vec3());
+
+        box(translate(vec3((float)side * 4.5f, 0.016f, carZ)) * scale(vec3(0.15f, 0.012f, ROAD_LENGTH)),
+            vec3(0.80f, 0.80f, 0.80f), 0.05f, 8.f, vec3());
+    }
+
+    float snap = std::floor(carZ / 6.f) * 6.f;
+    for (int k = -20; k <= 20; ++k)
         box(translate(vec3(0.f, 0.016f, snap + 6.f * (float)k)) * scale(vec3(0.25f, 0.012f, 3.f)),
             vec3(0.85f, 0.85f, 0.7f), 0.05f, 8.f, vec3());
 

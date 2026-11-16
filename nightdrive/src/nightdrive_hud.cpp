@@ -188,8 +188,8 @@ void drawNightDriveHud(int width, int height, int fps, float speed,
     rectangle(X(18), Y(54), 573.f * zoom, 1.f * zoom, Color{0.3f,0.4f,0.58f,0.7f});
     drawText("NIGHT DRIVE", X(18), Y(15), 3.f * zoom, white);
     drawText("TOPIC 7", X(405), Y(25), 2.f * zoom, amber);
-    drawText("TEAM: ASKARULY TEMIRLAN / TAMERLAN MURAT", X(18), Y(68), 1.8f * zoom, muted);
-    drawText("TEAM: TAMIRLAN", X(18), Y(90), 1.8f * zoom, muted);
+    drawText("TEAM: ASKARULY TEMIRLAN / TAMERLAN", X(18), Y(68), 1.8f * zoom, muted);
+    drawText("      MURAT / TAMERLAN KYZYLOV", X(18), Y(90), 1.8f * zoom, muted);
 
     char stats[120] = {};
     std::snprintf(stats, sizeof(stats), "FPS: %d   SPEED: %.0f", fps, speed);
