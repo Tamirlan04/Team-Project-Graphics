@@ -3,10 +3,12 @@
 
 struct Car {
     vec3  pos;
-    float yaw      = 0.f;
-    float speed    = 0.f;
-    float distance = 0.f;   
-    float tripTime = 0.f;   
+    float yaw = 0.f;
+    float speed = 0.f;
+    float steer = 0.f;
+    bool  braking = false;
+    float distance = 0.f;
+    float tripTime = 0.f;
 };
 
 struct CarInput { bool up = false, down = false, left = false, right = false, brake = false; };
