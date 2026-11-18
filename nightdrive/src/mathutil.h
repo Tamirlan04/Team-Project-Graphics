@@ -9,6 +9,16 @@ struct vec3 {
     vec3 operator*(float s) const { return vec3(x * s, y * s, z * s); }
     vec3 operator-() const { return vec3(-x, -y, -z); }
 };
+
+struct vec4 {
+    float x, y, z, w;
+    vec4(float x_ = 0.f, float y_ = 0.f, float z_ = 0.f, float w_ = 1.f) : x(x_), y(y_), z(z_), w(w_) {}
+    vec4(const vec3& v, float w_ = 1.f) : x(v.x), y(v.y), z(v.z), w(w_) {}
+    vec4 operator+(const vec4& o) const { return vec4(x + o.x, y + o.y, z + o.z, w + o.w); }
+    vec4 operator-(const vec4& o) const { return vec4(x - o.x, y - o.y, z - o.z, w - o.w); }
+    vec4 operator*(float s) const { return vec4(x * s, y * s, z * s, w * s); }
+};
+
 inline float dot(const vec3& a, const vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 inline vec3 cross(const vec3& a, const vec3& b) {
     return vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x);
@@ -21,7 +31,7 @@ inline vec3 normalize(const vec3& v) {
 inline float radians(float deg) { return deg * 3.14159265358979f / 180.f; }
 
 struct mat4 {
-    float m[16];  // m[col * 4 + row]
+    float m[16];  
     mat4() { for (int i = 0; i < 16; ++i) m[i] = (i % 5 == 0) ? 1.f : 0.f; }
 };
 
@@ -34,6 +44,15 @@ inline mat4 operator*(const mat4& a, const mat4& b) {
             r.m[c * 4 + row] = s;
         }
     return r;
+}
+
+inline vec4 operator*(const mat4& M, const vec4& p) {
+    return vec4(
+        M.m[0] * p.x + M.m[4] * p.y + M.m[8] * p.z + M.m[12] * p.w,
+        M.m[1] * p.x + M.m[5] * p.y + M.m[9] * p.z + M.m[13] * p.w,
+        M.m[2] * p.x + M.m[6] * p.y + M.m[10] * p.z + M.m[14] * p.w,
+        M.m[3] * p.x + M.m[7] * p.y + M.m[11] * p.z + M.m[15] * p.w
+    );
 }
 
 inline mat4 translate(const vec3& t) {
@@ -56,8 +75,8 @@ inline mat4 rotateY(float a) {
 }
 inline vec3 transformPoint(const mat4& M, const vec3& p) {
     return vec3(M.m[0] * p.x + M.m[4] * p.y + M.m[8] * p.z + M.m[12],
-                M.m[1] * p.x + M.m[5] * p.y + M.m[9] * p.z + M.m[13],
-                M.m[2] * p.x + M.m[6] * p.y + M.m[10] * p.z + M.m[14]);
+        M.m[1] * p.x + M.m[5] * p.y + M.m[9] * p.z + M.m[13],
+        M.m[2] * p.x + M.m[6] * p.y + M.m[10] * p.z + M.m[14]);
 }
 
 inline mat4 lookAt(const vec3& eye, const vec3& center, const vec3& up) {
@@ -65,8 +84,8 @@ inline mat4 lookAt(const vec3& eye, const vec3& center, const vec3& up) {
     vec3 s = normalize(cross(f, up));
     vec3 u = cross(s, f);
     mat4 r;
-    r.m[0] = s.x; r.m[4] = s.y; r.m[8]  = s.z;
-    r.m[1] = u.x; r.m[5] = u.y; r.m[9]  = u.z;
+    r.m[0] = s.x; r.m[4] = s.y; r.m[8] = s.z;
+    r.m[1] = u.x; r.m[5] = u.y; r.m[9] = u.z;
     r.m[2] = -f.x; r.m[6] = -f.y; r.m[10] = -f.z;
     r.m[12] = -dot(s, eye);
     r.m[13] = -dot(u, eye);
