@@ -225,6 +225,7 @@ void drawNightDriveHud(int width, int height, int fps, float speed,
                 "C      : CHANGE CAMERA",
                 "T      : STREET LIGHTS",
                 "F      : HEADLIGHTS",
+                "L      : LIGHT MODE",
                 "MOUSE  : ORBIT / ZOOM",
                 "ESC    : EXIT"
             };

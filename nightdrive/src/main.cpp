@@ -14,8 +14,11 @@
 #include "car.h"
 #include "scene.h"
 #include "nightdrive_hud.h"
+#include "clustered_lighting.h"
+#include "cluster_gpu_packing.h"
+#include "cluster_gpu_buffers.h"
 
-static const char* TEAM_NAMES  = "Askaruly Temirlan, Tamerlan Murat, Tamerlan Kyzylov";
+static const char* TEAM_NAMES = "Askaruly Temirlan, Tamerlan Murat, Tamerlan Kyzylov";
 static const char* TOPIC_TITLE = "Topic 7 - Low-poly night drive, clustered/forward+ street lights";
 
 struct Mesh {
@@ -32,18 +35,22 @@ static Mesh gCube, gSphere, gStars;
 static Car gCar;
 static Scene gScene;
 
+static nightdrive::ClusterGrid gClusterGrid;
+static nightdrive::ClusterGpuBuffers gClusterBuffers;
+
 static bool gUp = false, gDown = false, gLeft = false, gRight = false, gBrake = false;
 static bool gPaused = false;
 static bool gShowHelp = false;
 static bool gStreetOn = true;
 static bool gHeadOn = true;
 static bool gChaseCam = true;
+static bool gUseClustered = true;
 
 static float gOrbitYaw = 3.14159f, gOrbitPitch = 0.35f, gOrbitDist = 12.f;
 static bool gDragging = false;
 static int gLastX = 0, gLastY = 0;
 
-static float gMoonAz = 0.4f, gMoonEl = 0.45f;   
+static float gMoonAz = 0.4f, gMoonEl = 0.45f;
 
 static float gAspect = 16.f / 9.f;
 static int gLastTime = 0;
@@ -111,10 +118,13 @@ static GLint loc(const char* name) {
     gLocCache[name] = l;
     return l;
 }
-static void setInt(const char* n, int v)            { glUniform1i(loc(n), v); }
-static void setFloat(const char* n, float v)        { glUniform1f(loc(n), v); }
-static void setVec3(const char* n, const vec3& v)   { glUniform3f(loc(n), v.x, v.y, v.z); }
-static void setMat4(const char* n, const mat4& m)   { glUniformMatrix4fv(loc(n), 1, GL_FALSE, m.m); }
+
+static void setInt(const char* n, int v) { glUniform1i(loc(n), v); }
+static void setFloat(const char* n, float v) { glUniform1f(loc(n), v); }
+static void setVec2(const char* n, float x, float y) { glUniform2f(loc(n), x, y); }
+static void setVec3(const char* n, const vec3& v) { glUniform3f(loc(n), v.x, v.y, v.z); }
+static void setVec3i(const char* n, int x, int y, int z) { glUniform3i(loc(n), x, y, z); }
+static void setMat4(const char* n, const mat4& m) { glUniformMatrix4fv(loc(n), 1, GL_FALSE, m.m); }
 
 static void pushVertex(std::vector<float>& v, const vec3& p, const vec3& n) {
     v.push_back(p.x); v.push_back(p.y); v.push_back(p.z);
@@ -139,14 +149,14 @@ static Mesh makeMesh(const std::vector<float>& data, GLenum mode) {
 }
 
 static Mesh buildCube() {
-    struct Face { vec3 n, u, w; };  
+    struct Face { vec3 n, u, w; };
     const Face faces[6] = {
-        { vec3( 1, 0, 0), vec3(0, 1, 0), vec3(0, 0, 1) },
+        { vec3(1, 0, 0), vec3(0, 1, 0), vec3(0, 0, 1) },
         { vec3(-1, 0, 0), vec3(0, 0, 1), vec3(0, 1, 0) },
-        { vec3( 0, 1, 0), vec3(0, 0, 1), vec3(1, 0, 0) },
-        { vec3( 0,-1, 0), vec3(1, 0, 0), vec3(0, 0, 1) },
-        { vec3( 0, 0, 1), vec3(1, 0, 0), vec3(0, 1, 0) },
-        { vec3( 0, 0,-1), vec3(0, 1, 0), vec3(1, 0, 0) },
+        { vec3(0, 1, 0), vec3(0, 0, 1), vec3(1, 0, 0) },
+        { vec3(0,-1, 0), vec3(1, 0, 0), vec3(0, 0, 1) },
+        { vec3(0, 0, 1), vec3(1, 0, 0), vec3(0, 1, 0) },
+        { vec3(0, 0,-1), vec3(0, 1, 0), vec3(1, 0, 0) },
     };
     std::vector<float> v;
     for (const Face& f : faces) {
@@ -163,7 +173,7 @@ static Mesh buildCube() {
 
 static void pushTriFlat(std::vector<float>& v, vec3 a, vec3 b, vec3 c) {
     vec3 n = cross(b - a, c - a);
-    if (length(n) < 1e-6f) return;              
+    if (length(n) < 1e-6f) return;
     vec3 centroid = (a + b + c) * (1.f / 3.f);
     if (dot(n, centroid) < 0.f) { vec3 t = b; b = c; c = t; n = -n; }
     n = normalize(n);
@@ -209,22 +219,36 @@ static bool initGL() {
         std::fprintf(stderr, "ERROR: OpenGL 3.3 core is required but not available.\n");
         return false;
     }
-    glEnable(GL_DEPTH_TEST);            
+    glEnable(GL_DEPTH_TEST);
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glEnable(GL_PROGRAM_POINT_SIZE);
     if (!buildProgram()) return false;
+
     gCube = buildCube();
     gSphere = buildSphere(6, 10);
     gStars = buildStars(600);
     gScene.build();
     resetCar(gCar);
+
+    gClusterBuffers.initialize();
+    nightdrive::ClusterConfig cfg;
+    cfg.viewportWidth = 1280;
+    cfg.viewportHeight = 720;
+    cfg.tilesX = 16;
+    cfg.tilesY = 9;
+    cfg.depthSlices = 24;
+    cfg.nearPlane = 0.1f;
+    cfg.farPlane = 1000.0f;
+    cfg.verticalFovRadians = radians(60.0f);
+    gClusterGrid.configure(cfg);
+
     if (!initNightDriveHud()) return false;
     return true;
 }
 
 static void drawPart(const Mesh& m, const mat4& model, const vec3& color,
-                     float spec = 0.15f, float shin = 16.f, const vec3& emissive = vec3()) {
+    float spec = 0.15f, float shin = 16.f, const vec3& emissive = vec3()) {
     setMat4("uModel", model);
     setVec3("uColor", color);
     setFloat("uSpec", spec);
@@ -241,8 +265,8 @@ static vec3 moonDirection() {
 static void updateTitle() {
     char t[400];
     std::snprintf(t, sizeof(t),
-        "%s | %s | FPS %d | Lighting: BRUTE-FORCE baseline, %d street lights %s [T, 1/2/3] | Headlights %s [F] | %s | Speed %.0f | Distance %.0f/%.0f m | Time %.0f s%s",
-        TEAM_NAMES, TOPIC_TITLE, gFps, gScene.lightPreset, gStreetOn ? "ON" : "OFF", gHeadOn ? "ON" : "OFF",
+        "%s | %s | FPS %d | Lighting: %s, %d street lights %s [L, T, 1/2/3] | Headlights %s [F] | %s | Speed %.0f | Distance %.0f/%.0f m | Time %.0f s%s",
+        TEAM_NAMES, TOPIC_TITLE, gFps, gUseClustered ? "CLUSTERED" : "BRUTE-FORCE", gScene.lightPreset, gStreetOn ? "ON" : "OFF", gHeadOn ? "ON" : "OFF",
         gPaused ? "PAUSED" : "running", gCar.speed, gCar.distance, GOAL_DISTANCE, gCar.tripTime,
         gCar.distance >= GOAL_DISTANCE ? " | GOAL REACHED! [R] restart" : "");
     glutSetWindowTitle(t);
@@ -257,10 +281,11 @@ static void display() {
     if (gChaseCam) {
         eye = gCar.pos - fwd * 9.f + vec3(0.f, 4.2f, 0.f);
         target = gCar.pos + fwd * 4.f + vec3(0.f, 1.f, 0.f);
-    } else {
+    }
+    else {
         target = gCar.pos + vec3(0.f, 1.f, 0.f);
         eye = target + vec3(std::cos(gOrbitPitch) * std::sin(gOrbitYaw), std::sin(gOrbitPitch),
-                            std::cos(gOrbitPitch) * std::cos(gOrbitYaw)) * gOrbitDist;
+            std::cos(gOrbitPitch) * std::cos(gOrbitYaw)) * gOrbitDist;
     }
     mat4 view = lookAt(eye, target, vec3(0.f, 1.f, 0.f));
     mat4 proj = perspective(radians(60.f), gAspect, 0.1f, 1000.f);
@@ -268,6 +293,29 @@ static void display() {
     glUseProgram(gProgram);
     setMat4("uView", view);
     setMat4("uProj", proj);
+
+    int winWidth = glutGet(GLUT_WINDOW_WIDTH);
+    int winHeight = glutGet(GLUT_WINDOW_HEIGHT);
+
+    int numLightsToUse = std::min((int)gScene.lights.size(), 64);
+    std::vector<nightdrive::PointLight> pointLights;
+    pointLights.reserve(numLightsToUse);
+    for (int i = 0; i < numLightsToUse; ++i) {
+        pointLights.emplace_back(gScene.lights[i].pos, 55.0f);
+    }
+
+    gClusterGrid.buildLightLists(view, pointLights);
+    vec3 streetColor = vec3(5.f, 3.9f, 2.25f) * (16.f / (float)gScene.lightPreset) * 0.15f;
+    auto packedData = nightdrive::packClusterGpuData(gClusterGrid, pointLights, streetColor, 1.0f);
+    gClusterBuffers.upload(packedData);
+    gClusterBuffers.bind(gProgram, 0); 
+
+    setInt("uUseClustered", gUseClustered ? 1 : 0);
+    setInt("uNumLights", numLightsToUse);
+    setVec2("uScreenSize", (float)winWidth, (float)winHeight);
+    setFloat("uZNear", gClusterGrid.config().nearPlane);
+    setFloat("uZFar", gClusterGrid.config().farPlane);
+    setVec3i("uGridDims", gClusterGrid.config().tilesX, gClusterGrid.config().tilesY, gClusterGrid.config().depthSlices);
 
     vec3 headPos[2], headDir;
     getHeadlights(gCar, headPos, headDir);
@@ -279,12 +327,15 @@ static void display() {
     setVec3("uMoonColor", vec3(0.20f, 0.25f, 0.40f));
 
     std::vector<float> flat;
-    for (const StreetLight& L : gScene.lights) { flat.push_back(L.pos.x); flat.push_back(L.pos.y); flat.push_back(L.pos.z); }
-    int numStreet = std::min((int)gScene.lights.size(), 64);
+    for (int i = 0; i < numLightsToUse; ++i) {
+        flat.push_back(gScene.lights[i].pos.x);
+        flat.push_back(gScene.lights[i].pos.y);
+        flat.push_back(gScene.lights[i].pos.z);
+    }
     setInt("uStreetOn", gStreetOn ? 1 : 0);
-    setInt("uNumStreet", numStreet);
-    glUniform3fv(loc("uStreetPos[0]"), numStreet, flat.data());
-    setVec3("uStreetColor", vec3(5.f, 3.9f, 2.25f) * (16.f / (float)gScene.lightPreset));;
+    setInt("uNumStreet", numLightsToUse);
+    glUniform3fv(loc("uStreetPos[0]"), numLightsToUse, flat.data());
+    setVec3("uStreetColor", streetColor);
 
     float hp[6] = { headPos[0].x, headPos[0].y, headPos[0].z, headPos[1].x, headPos[1].y, headPos[1].z };
     setInt("uHeadOn", gHeadOn ? 1 : 0);
@@ -301,14 +352,14 @@ static void display() {
 
     DrawBoxFn box = [](const mat4& m, const vec3& color, float spec, float shin, const vec3& emissive) {
         drawPart(gCube, m, color, spec, shin, emissive);
-    };
+        };
     gScene.draw(box, gCar.pos.z, gStreetOn);
     drawCar(gCar, gHeadOn, box);
 
     glBindVertexArray(0);
-    drawNightDriveHud(glutGet(GLUT_WINDOW_WIDTH), glutGet(GLUT_WINDOW_HEIGHT),
-                      gFps, gCar.speed, gPaused, gStreetOn, gHeadOn,
-                      gShowHelp, "BRUTE-FORCE");
+    drawNightDriveHud(winWidth, winHeight,
+        gFps, gCar.speed, gPaused, gStreetOn, gHeadOn,
+        gShowHelp, gUseClustered ? "CLUSTERED" : "BRUTE-FORCE");
     glutSwapBuffers();
 
     ++gFrames;
@@ -323,7 +374,7 @@ static void display() {
 
 static float clampf(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
 
-static void idle() {            
+static void idle() {
     int now = glutGet(GLUT_ELAPSED_TIME);
     float dt = (float)(now - gLastTime) * 0.001f;
     gLastTime = now;
@@ -339,15 +390,19 @@ static void reshape(int w, int h) {
     if (h == 0) h = 1;
     glViewport(0, 0, w, h);
     gAspect = (float)w / (float)h;
+
+    nightdrive::ClusterConfig cfg = gClusterGrid.config();
+    cfg.viewportWidth = w;
+    cfg.viewportHeight = h;
+    gClusterGrid.configure(cfg);
 }
-
-
 
 static void togglePause() {
     gPaused = !gPaused;
     if (gPaused) {
-        glutIdleFunc(nullptr);  
-    } else {
+        glutIdleFunc(nullptr);
+    }
+    else {
         gLastTime = glutGet(GLUT_ELAPSED_TIME);
         glutIdleFunc(idle);
     }
@@ -356,26 +411,27 @@ static void togglePause() {
 static void keyDown(unsigned char key, int, int) {
     key = (unsigned char)std::tolower(key);
     switch (key) {
-        case 27:  std::exit(0);
-        case ' ': gBrake = true; break;
-        case 'p': togglePause(); break;
-        case 'r': resetCar(gCar); gScene.update(gCar.pos.z); break;
-        case '1': gScene.setLightPreset(16); gScene.update(gCar.pos.z); break;
-        case '2': gScene.setLightPreset(32); gScene.update(gCar.pos.z); break;
-        case '3': gScene.setLightPreset(64); gScene.update(gCar.pos.z); break;
-        case 'h': gShowHelp = !gShowHelp; break;
-        case 'c':
-            gChaseCam = !gChaseCam;
-            if (!gChaseCam) gOrbitYaw = gCar.yaw + 3.14159f;   
-            break;
-        case 't': gStreetOn = !gStreetOn; break;
-        case 'f': gHeadOn = !gHeadOn; break;
-        case '[': gMoonAz -= 0.1f; break;
-        case ']': gMoonAz += 0.1f; break;
-        case '-': gMoonEl = clampf(gMoonEl - 0.05f, 0.05f, 1.5f); break;
-        case '=':
-        case '+': gMoonEl = clampf(gMoonEl + 0.05f, 0.05f, 1.5f); break;
-        default: break;
+    case 27:  std::exit(0);
+    case ' ': gBrake = true; break;
+    case 'p': togglePause(); break;
+    case 'r': resetCar(gCar); gScene.update(gCar.pos.z); break;
+    case '1': gScene.setLightPreset(16); gScene.update(gCar.pos.z); break;
+    case '2': gScene.setLightPreset(32); gScene.update(gCar.pos.z); break;
+    case '3': gScene.setLightPreset(64); gScene.update(gCar.pos.z); break;
+    case 'h': gShowHelp = !gShowHelp; break;
+    case 'l': gUseClustered = !gUseClustered; break;
+    case 'c':
+        gChaseCam = !gChaseCam;
+        if (!gChaseCam) gOrbitYaw = gCar.yaw + 3.14159f;
+        break;
+    case 't': gStreetOn = !gStreetOn; break;
+    case 'f': gHeadOn = !gHeadOn; break;
+    case '[': gMoonAz -= 0.1f; break;
+    case ']': gMoonAz += 0.1f; break;
+    case '-': gMoonEl = clampf(gMoonEl - 0.05f, 0.05f, 1.5f); break;
+    case '=':
+    case '+': gMoonEl = clampf(gMoonEl + 0.05f, 0.05f, 1.5f); break;
+    default: break;
     }
     updateTitle();
     glutPostRedisplay();
@@ -387,22 +443,22 @@ static void keyUp(unsigned char key, int, int) {
 
 static void specialDown(int key, int, int) {
     switch (key) {
-        case GLUT_KEY_F1: gShowHelp = !gShowHelp; glutPostRedisplay(); break;
-        case GLUT_KEY_UP:    gUp = true; break;
-        case GLUT_KEY_DOWN:  gDown = true; break;
-        case GLUT_KEY_LEFT:  gLeft = true; break;
-        case GLUT_KEY_RIGHT: gRight = true; break;
-        default: break;
+    case GLUT_KEY_F1: gShowHelp = !gShowHelp; glutPostRedisplay(); break;
+    case GLUT_KEY_UP:    gUp = true; break;
+    case GLUT_KEY_DOWN:  gDown = true; break;
+    case GLUT_KEY_LEFT:  gLeft = true; break;
+    case GLUT_KEY_RIGHT: gRight = true; break;
+    default: break;
     }
 }
 
 static void specialUp(int key, int, int) {
     switch (key) {
-        case GLUT_KEY_UP:    gUp = false; break;
-        case GLUT_KEY_DOWN:  gDown = false; break;
-        case GLUT_KEY_LEFT:  gLeft = false; break;
-        case GLUT_KEY_RIGHT: gRight = false; break;
-        default: break;
+    case GLUT_KEY_UP:    gUp = false; break;
+    case GLUT_KEY_DOWN:  gDown = false; break;
+    case GLUT_KEY_RIGHT: gRight = false; break;
+    case GLUT_KEY_LEFT:  gLeft = false; break;
+    default: break;
     }
 }
 
@@ -410,9 +466,11 @@ static void mouse(int button, int state, int x, int y) {
     if (button == GLUT_LEFT_BUTTON) {
         gDragging = (state == GLUT_DOWN);
         gLastX = x; gLastY = y;
-    } else if (state == GLUT_DOWN && button == 3) {     
+    }
+    else if (state == GLUT_DOWN && button == 3) {
         gOrbitDist = std::max(4.f, gOrbitDist - 1.f);
-    } else if (state == GLUT_DOWN && button == 4) {      
+    }
+    else if (state == GLUT_DOWN && button == 4) {
         gOrbitDist = std::min(40.f, gOrbitDist + 1.f);
     }
     glutPostRedisplay();
@@ -420,7 +478,7 @@ static void mouse(int button, int state, int x, int y) {
 
 static void motion(int x, int y) {
     if (!gDragging) return;
-    if (gChaseCam) {                                      
+    if (gChaseCam) {
         gChaseCam = false;
         gOrbitYaw = gCar.yaw + 3.14159f;
     }
@@ -444,7 +502,7 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "ERROR: glewInit failed: %s\n", (const char*)glewGetErrorString(err));
         return 1;
     }
-    glGetError();  
+    glGetError();
 
     if (!initGL()) return 1;
 
