@@ -1,0 +1,7 @@
+﻿cmake_minimum_required(VERSION 3.16)
+project(NightDriveClusterDebugTest LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+enable_testing()
+add_executable(cluster_debug_tests cluster_debug_tests.cpp)
+add_test(NAME ClusterDebuggingValidationTest COMMAND cluster_debug_tests)
