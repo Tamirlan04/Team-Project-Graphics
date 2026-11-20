@@ -1,0 +1,7 @@
+﻿cmake_minimum_required(VERSION 3.16)
+project(NightDriveClusterBenchmarkTest LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+enable_testing()
+add_executable(cluster_benchmark_tests cluster_benchmark_tests.cpp)
+add_test(NAME ClusteredShadingBenchmarkTest COMMAND cluster_benchmark_tests)
