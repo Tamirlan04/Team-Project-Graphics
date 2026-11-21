@@ -1,0 +1,7 @@
+﻿cmake_minimum_required(VERSION 3.16)
+project(NightDriveClusterOptTest LANGUAGES CXX)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+enable_testing()
+add_executable(cluster_opt_tests cluster_opt_tests.cpp)
+add_test(NAME ClusterOptimizationRegressionTest COMMAND cluster_opt_tests)
