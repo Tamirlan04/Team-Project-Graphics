@@ -113,9 +113,3 @@ These are **manual observations, not multi-run benchmark averages or GPU timings
 - [Baseline performance, November 16](docs/performance_baseline_16Nov.md)
 - [Lighting-mode benchmark, November 17](docs/lighting_benchmarks_17Nov.md)
 - [Technical report in Word format](Report.docx)
-
-The November 18 technical draft and final demo media should be linked here **after their files are merged and verified**. Do not add unverified or placeholder download links to the final submission.
-
-## Safe contribution workflow
-
-Create a feature/documentation branch, make the intended change, verify `git diff --cached --name-only`, commit, push, and open a pull request. Request reviews from the two designated teammates and merge **only after both approvals**. For this README task, the PR should change **only `README.md`**—not the game source, shaders, CMake files, or generated build directories.
